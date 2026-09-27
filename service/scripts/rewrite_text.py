@@ -64,7 +64,12 @@ from urllib.parse import urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from common import cleaned_path, eprint, read_text_input, write_text_output
-from humanize_pass import humanize_pass
+try:
+    from humanize_pass import humanize_pass
+except ImportError:
+    def humanize_pass(text, *args, **kwargs):
+        return text
+
 from text_detectors import GumbelTextDetector, MarkLLMTextDetector
 from text_unicode import clean_text
 
