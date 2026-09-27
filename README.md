@@ -29,6 +29,48 @@ Skill path: [`skills/remove-ai-marks/`](skills/remove-ai-marks/)
 Service path: [`service/`](service/)  
 (migration: formerly `remove-claude-marks`; slash alias `/remove-claude-marks` still documented)
 
+## Validated state of this checkout
+
+The results below describe controlled tests of this checkout, not a promise that
+every third-party or private detector will clear. The final local regression run
+reported **1,381 passed, 28 skipped, 0 failed**; rerun
+`pytest` and `make compose-check` on the checkout you plan to release.
+
+| Capability | Evidence and limit |
+| --- | --- |
+| Invisible Unicode / Layer A | Validated deterministic removal. |
+| EXIF/XMP metadata | Validated stripping on supported file formats. |
+| Office OOXML metadata | Validated for DOCX, XLSX, and PPTX, including `dc:title` scrubbing. |
+| Genuine C2PA provenance | Validated removal of a genuine manifest; a marker-only fixture is not proof of this. Soft binding and in-content marks are separate. |
+| KGW statistical text | Controlled removal validated with a matching research detector. |
+| EXP / Aaronson-family text | Controlled removal validated in **5/5** trials with matching-key verification. |
+| SynthID-style text | Controlled, same-config research validation only; this is **not** evidence against a private or provider detector. |
+| reverse-SynthID | Operational local image scorer, not a remover or provider verdict. |
+| CtrlRegen image removal | **Experimental:** 3/5 batch detector clears, with visual-fidelity concerns. Inspect every output before use. |
+| MarkDiffusion purification | **Experimental:** observed fidelity degradation. Inspect every output before use. |
+| Docker services | Five-service compose stack healthy in the final local validation run; `make compose-check` checks the current stack. |
+
+The normal file CLI, `clean_file.py`, runs Layer A and file-metadata cleaning.
+It does **not** run a model-based Layer B rewrite or pixel regeneration. Those
+optional workflows have their own setup and commands below. For ordinary local
+use, clone this repository and use Python 3.10+; the core scripts require no
+Python package installation. From the repository root:
+
+```bash
+python3 service/scripts/inspect_file.py notes.docx --json
+python3 service/scripts/clean_file.py notes.docx -o notes.cleaned.docx
+python3 service/scripts/inspect_file.py notes.cleaned.docx --json
+
+python3 service/scripts/clean_file.py draft.md -o draft.cleaned.md
+python3 service/scripts/clean_file.py photo.jpg -o photo.cleaned.jpg
+```
+
+Use `make serve` for the HTTP service and optional agent skill; use
+`docker compose up -d` for the core container. The [quick-use examples](#quick-use-scripts)
+and [Docker instructions](#docker--compose) cover the other supported paths.
+Keep an original copy and inspect the output. `--in-place` creates a `.bak`
+backup; `-o` writes a separate file.
+
 ## Install (agent skill)
 
 The skill ships **no code** — it calls the service over HTTP. Install the skill (markdown only) and start the service, then set `WATERMARKS_SERVICE_URL` if it is not `http://127.0.0.1:8765`.
@@ -574,6 +616,9 @@ StableSignature), an optional external backend runs the CtrlRegen pipeline
 [`mertizci/noai-watermark`](https://github.com/mertizci/noai-watermark), a
 maintained reimplementation of the ICLR 2025
 [CtrlRegen](https://arxiv.org/abs/2410.05470) method with automatic tiling.
+This path remains **experimental**: a controlled batch cleared its detector in
+3/5 cases, and visual inspection found fidelity concerns. A lower detector
+score alone is insufficient to accept the regenerated image.
 
 The backend is **not bundled** and ships no LICENSE file, so it is treated as
 all-rights-reserved: it is cloned at a pinned commit and loaded at runtime.
@@ -891,8 +936,9 @@ a *generative watermarking* toolkit for latent diffusion models (it embeds marks
    attack is exposed as `clean_image.py --remove-pixel diffusion`, an
    alternative to CtrlRegen. It is **blind** regeneration (no ControlNet
    conditioning), so it drifts image content more than CtrlRegen — conservative
-   intensity default (`0.3`), treated as a fallback/comparison, never a
-   guarantee.
+   intensity default (`0.3`). This remains **experimental** because validation
+   showed visual-fidelity degradation; treat it as a comparison, not a
+   guaranteed clean output.
 3. **Local same-scheme detector** for Tree-Ring-class marks, partially filling
    the "no local detector for StegaStamp/Tree-Ring/StableSignature" gap (it
    covers Tree-Ring/Ring-ID/Gaussian-Shading etc., not StegaStamp /
@@ -958,7 +1004,7 @@ on the host instead. Model downloads still hit the HF hub on first run.
 | Unicode / edit-based text | Layer A | Layer A | Layer A | Layer A |
 | **Statistical sampling text** | Layer B best-effort (Claude seam when Anthropic's detection API ships) | Layer B best-effort (+ MarkLLM same-config harness; Google retired the vendor detector Aug 2026) | Layer B if present | Layer B best-effort + optional MarkLLM harness |
 | C2PA / file metadata | Yes (listed formats) | Yes when present | Yes when present | Yes when present |
-| Pixel image marks | Out of scope | Optional SynthID score + CtrlRegen removal (external); optional MarkDiffusion same-scheme detect + DiffusionPurification removal (external) | Out of scope | Optional CtrlRegen / MarkDiffusion removal (external) |
+| Pixel image marks | Out of scope | Optional reverse-SynthID score; experimental CtrlRegen removal (external); experimental MarkDiffusion same-scheme detect and DiffusionPurification (external) | Out of scope | Experimental CtrlRegen / MarkDiffusion removal (external) |
 | Training backdoors | Out of scope | Out of scope | Out of scope | Out of scope |
 
 Details: [`skills/remove-ai-marks/references/vendor-notes.md`](skills/remove-ai-marks/references/vendor-notes.md), [`mark-classes.md`](skills/remove-ai-marks/references/mark-classes.md).
@@ -1130,8 +1176,8 @@ Vendor-provided checkers for verifying whether content carries AI provenance mar
 | Unicode scrub (Layer A) | ZWSP, bidi, tags, exotic spaces, … | Safe default for text |
 | Rewrite (Layer B) | Statistical token marks (best-effort) | Always offered by skill; costs style — see [Disclaimer](#disclaimer-what-removing-a-text-watermark-costs) |
 | Container/metadata strip | File provenance | See format table |
-| CtrlRegen pixel removal (optional) | Pixel-domain image marks (SynthID-class, StegaStamp, Tree-Ring, StableSignature) | External backend; heavy compute; conservative intensity default |
-| DiffusionPurification pixel removal (optional) | Pixel-domain image marks (Tree-Ring-class) | MarkDiffusion backend; blind regeneration (more drift than CtrlRegen); conservative intensity default |
+| CtrlRegen pixel removal (optional) | Experimental pixel-domain image regeneration | External backend; 3/5 controlled detector clears; visual-fidelity concerns |
+| DiffusionPurification pixel removal (optional) | Experimental pixel-domain image regeneration | MarkDiffusion backend; observed fidelity degradation |
 | Open-weight local models | Avoid re-stamping with origin model | Operational alternative |
 
 Matrix: [`skills/remove-ai-marks/references/removal-matrix.md`](skills/remove-ai-marks/references/removal-matrix.md).

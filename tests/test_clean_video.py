@@ -140,9 +140,9 @@ def test_video_purify_unavailable_without_backend(tmp_path):
     src.write_bytes(b"\x00" * 16)  # not a real video -- gating fails before decode
     dest = tmp_path / "out.mp4"
 
-    result = video_purify(src, dest, remove_pixel="ctrlregen")
+    result = video_purify(src, dest, remove_pixel="ctrlregen", ctrlregen_dir=str(tmp_path / "missing-backend"))
     assert result["available"] is False
-    assert "CtrlRegen" in result["error"]  # backend error, even without ffmpeg
+    assert "CtrlRegen dir not found" in result["error"]  # backend error, even without ffmpeg
     assert not dest.exists()  # no partial output written
 
 

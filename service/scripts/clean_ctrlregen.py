@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import math
 import os
 import sys
 from pathlib import Path
@@ -26,8 +27,7 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 from common import cleaned_path, safe_write_bytes  # noqa: E402
 
-# Backend default guidance scale (CtrlRegenEngine.run() default). Kept
-# internal: intensity is the user-facing knob, not the CFG scale.
+# Backend default guidance scale (CtrlRegenEngine.run() default).
 DEFAULT_GUIDANCE_SCALE = 2.0
 
 
@@ -95,6 +95,12 @@ def main() -> int:
         default=50,
         help="Diffusion inference steps (default: 50; effective steps ~= steps * intensity)",
     )
+    p.add_argument("--ip-adapter-scale", type=float, default=1.0,
+                   help="Semantic IP-Adapter scale (default: 1.0)")
+    p.add_argument("--controlnet-scale", type=float, default=1.0,
+                   help="Spatial ControlNet conditioning scale (default: 1.0)")
+    p.add_argument("--guidance-scale", type=float, default=DEFAULT_GUIDANCE_SCALE,
+                   help="Classifier-free guidance scale (default: 2.0)")
     p.add_argument(
         "--device",
         type=str,
@@ -114,6 +120,11 @@ def main() -> int:
     if args.steps < 1:
         print(f"steps must be >= 1: {args.steps}", file=sys.stderr)
         return 2
+    for name in ("ip_adapter_scale", "controlnet_scale", "guidance_scale"):
+        value = getattr(args, name)
+        if not math.isfinite(value) or value < 0:
+            print(f"{name.replace('_', '-')} must be finite and >= 0: {value}", file=sys.stderr)
+            return 2
 
     raw_upstream = args.upstream_dir or os.environ.get("NOAI_WATERMARK_DIR")
     upstream = resolve_upstream(str(raw_upstream) if raw_upstream else None)
@@ -168,8 +179,10 @@ def main() -> int:
             image,
             strength=args.intensity,
             num_inference_steps=args.steps,
-            guidance_scale=DEFAULT_GUIDANCE_SCALE,
+            guidance_scale=args.guidance_scale,
             seed=args.seed,
+            ip_adapter_scale=args.ip_adapter_scale,
+            controlnet_scale=args.controlnet_scale,
         )
     except Exception as e:
         print(f"CtrlRegen error: {e}", file=sys.stderr)
@@ -188,6 +201,9 @@ def main() -> int:
         "output": str(output),
         "intensity": args.intensity,
         "steps": args.steps,
+        "ip_adapter_scale": args.ip_adapter_scale,
+        "controlnet_scale": args.controlnet_scale,
+        "guidance_scale": args.guidance_scale,
         "device": device,
         "seed": args.seed,
         "input_size": list(image.size),

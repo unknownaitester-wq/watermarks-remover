@@ -242,9 +242,9 @@ def test_xlsx_inspect_and_clean():
         assert "customXml/item1.xml" not in namelist
         assert "docProps/custom.xml" not in namelist
 
-        # Validate core.xml preserves dc:title but empties creator/description
+        # Validate core.xml empties title and creator/description.
         core_xml = zf.read("docProps/core.xml").decode("utf-8")
-        assert "<dc:title>Financial Data</dc:title>" in core_xml
+        assert "<dc:title></dc:title>" in core_xml or "<dc:title/>" in core_xml
         assert "<dc:creator></dc:creator>" in core_xml
         assert "ChatGPT" not in core_xml
 
@@ -289,7 +289,7 @@ def test_pptx_inspect_and_clean():
     with zipfile.ZipFile(io.BytesIO(cleaned_bytes)) as zf:
         # Validate core.xml
         core_xml = zf.read("docProps/core.xml").decode("utf-8")
-        assert "<dc:title>Pitch Deck</dc:title>" in core_xml
+        assert "<dc:title></dc:title>" in core_xml or "<dc:title/>" in core_xml
         assert "<dc:creator></dc:creator>" in core_xml
         assert "Claude" not in core_xml
 

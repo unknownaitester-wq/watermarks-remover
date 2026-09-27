@@ -45,7 +45,8 @@ def _fake_engine(fail_run: bool) -> str:
         "    def __init__(self, **kwargs):\n"
         "        pass\n"
         "    def run(self, image, strength=0.5, num_inference_steps=50, "
-        "guidance_scale=2.0, seed=None):\n"
+        "guidance_scale=2.0, seed=None, ip_adapter_scale=1.0, "
+        "controlnet_scale=1.0):\n"
         f"        {run_body}\n"
         "\n"
         "def is_ctrlregen_available():\n"
@@ -137,7 +138,27 @@ def test_cli_json_success(tmp_path: Path):
     payload = json.loads(r.stdout)
     assert payload["available"] is True
     assert payload["output"] == str(out)
+    assert payload["ip_adapter_scale"] == 1.0
+    assert payload["controlnet_scale"] == 1.0
+    assert payload["guidance_scale"] == 2.0
     assert out.read_bytes() == b"FAKEIMAGE"
+
+
+def test_cli_custom_scales(tmp_path: Path):
+    upstream = _make_fake_upstream(tmp_path)
+    img = tmp_path / "img.png"
+    img.write_bytes(b"x")
+    r = _run_adapter(
+        str(img), "-o", str(tmp_path / "out.png"),
+        "--upstream-dir", str(upstream), "--device", "cpu",
+        "--ip-adapter-scale", "1.25", "--controlnet-scale", "1.1",
+        "--guidance-scale", "2.5", "--json",
+    )
+    assert r.returncode == 0, r.stderr
+    payload = json.loads(r.stdout)
+    assert payload["ip_adapter_scale"] == 1.25
+    assert payload["controlnet_scale"] == 1.1
+    assert payload["guidance_scale"] == 2.5
 
 
 def test_cli_runtime_error(tmp_path: Path):

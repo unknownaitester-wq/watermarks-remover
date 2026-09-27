@@ -1822,8 +1822,7 @@ DOCX_CUSTOM_PREFIXES = (
 )
 
 # Provenance fields in docProps/core.xml and docProps/app.xml that always come
-# out empty. dc:title is deliberately not listed: it is the document's own
-# heading, not provenance. AppVersion is also excluded: ECMA-376 Part 1
+# out empty, including dc:title. AppVersion is excluded: ECMA-376 Part 1
 # §15.2.12.1 requires AppVersion to match \d+\.\d{4} when present, so blanking it
 # produces schema-invalid XML that Word/Office rejects with unreadable content (#283).
 DOCX_SCRUB_FIELDS = (
@@ -1832,6 +1831,7 @@ DOCX_SCRUB_FIELDS = (
     ("dc:description", "dc:description"),
     ("cp:keywords", "cp:keywords"),
     ("dc:subject", "dc:subject"),
+    ("dc:title", "dc:title"),
     ("cp:category", "cp:category"),
     ("Application", "Application"),
     ("Company", "Company"),
