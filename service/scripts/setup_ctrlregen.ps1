@@ -86,12 +86,7 @@ if (-not (Test-Path (Join-Path $Dir '.git'))) {
     $head = ''
     try { $head = "$(git -C $Dir rev-parse HEAD)".Trim() } catch { $head = '' }
     if ($head -ne $Ref) {
-        Write-Host "existing checkout not at pinned ref $Ref (HEAD: $head); re-pinning"
-        Invoke-Checked 'git fetch' { git -C $Dir fetch --depth 1 origin $Ref }
-        Invoke-Checked 'git checkout' { git -C $Dir checkout --detach $Ref }
-        Invoke-Checked 'sparse-checkout' { git -C $Dir sparse-checkout set --no-cone '/src/' }
-        $head = (git -C $Dir rev-parse HEAD).Trim()
-        if ($head -ne $Ref) { throw "error: expected pinned ref $Ref, got $head" }
+        throw "Existing noai-watermark checkout is at $head, expected $Ref. Use a separate checkout; setup will not change this one."
     }
 }
 

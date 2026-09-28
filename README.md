@@ -71,6 +71,47 @@ and [Docker instructions](#docker--compose) cover the other supported paths.
 Keep an original copy and inspect the output. `--in-place` creates a `.bak`
 backup; `-o` writes a separate file.
 
+### One-command Mac workflow
+
+From this checkout, run:
+
+```bash
+./watermark-clean ~/Desktop/myfile.docx
+```
+
+The command writes `myfile.cleaned.docx` beside the original and a concise
+`myfile.cleaned.docx.report.json` report. If that name exists, it uses
+`myfile.cleaned-2.docx`, then the next free number. The original is never
+edited. It inspects the file, calls the existing deterministic cleaner, verifies
+the result, and runs read-only KGW, EXP, and SynthID-style MarkLLM checks on
+the cleaned text when the input is a text file or DOCX. Other supported file
+types receive deterministic cleaning and verification; statistical text checks
+are marked not applicable. No statistical rewrite or experimental image pixel
+backend runs.
+
+To make `watermark-clean` available from any Terminal directory on macOS:
+
+```bash
+mkdir -p "$HOME/bin"
+ln -s "$(pwd)/watermark-clean" "$HOME/bin/watermark-clean"
+echo 'export PATH="$HOME/bin:$PATH"' >> "$HOME/.zshrc"
+source "$HOME/.zshrc"
+watermark-clean ~/Desktop/myfile.docx
+```
+
+Run the setup commands while in this repository. Python 3.10+ is required.
+The default detector mode uses a local MarkLLM checkout if `MARKLLM_DIR` is
+set; otherwise it uses the existing `wr-markllm` Docker Compose service.
+Set up that optional research harness and cache its scoring model before use
+(see [optional MarkLLM text-watermark verification](#optional-markllm-text-watermark-verification)). Detector runs use
+`--offline`. If the model or Docker service is unavailable, the report says so
+and the cleaned file is still produced. Use `--detectors none` to skip those
+checks, or `--detectors local` / `--detectors docker` to choose explicitly.
+Research detector verdicts only apply to the configured model and scheme; they
+do not certify results from private or provider detectors. Open the cleaned
+DOCX in Word or Preview to confirm its appearance before replacing any working
+copy.
+
 ## Install (agent skill)
 
 The skill ships **no code** — it calls the service over HTTP. Install the skill (markdown only) and start the service, then set `WATERMARKS_SERVICE_URL` if it is not `http://127.0.0.1:8765`.
@@ -1237,6 +1278,12 @@ make smoke                          # quick CLI smoke on fixtures
 ```
 
 ## Changelog
+
+### v1.1.0 — one-command DOCX cleaning and optional backend maintenance
+
+- Added `watermark-clean` for a preserved original, collision-safe cleaned output, post-clean inspection, and a JSON report. For text and DOCX, it can run read-only KGW, EXP, and SynthID-style checks with the optional MarkLLM research harness.
+- Added an optional backend compatibility record and read-only checkout probe. Setup scripts now refuse to change an existing checkout at a different pinned commit; the MarkLLM image uses the matching pinned torch version.
+- **macOS acceptance:** `./watermark-clean --detectors docker` processed the tested résumé DOCX twice. The original remained intact; both runs produced cleaned DOCX files and JSON reports, with the second using a collision-safe `cleaned-2.docx` name. Post-clean verification found no deterministic findings. The configured research detectors returned negative verdicts for KGW, EXP, and SynthID-style on that document. These results do not guarantee outcomes from proprietary detectors or different detector configurations.
 
 ### [v0.7.0](https://github.com/guillaumemeyer/watermarks-remover/releases/tag/v0.7.0) — `/clean` Layer B rewrite, watermark-stealing module, audio/video watermark removal, and benchmark/tooling breadth
 

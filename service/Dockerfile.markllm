@@ -65,7 +65,7 @@ COPY scripts/text_watermark.py /app/text_watermark.py
 # with --gpus all.
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 RUN python3 -m pip install --no-cache-dir "pip==26.2.1" \
-    && python3 -m pip install --no-cache-dir --index-url "${TORCH_INDEX_URL}" "torch>=2.13,<2.14" \
+    && python3 -m pip install --no-cache-dir --index-url "${TORCH_INDEX_URL}" "torch==2.14.0.*" \
     && python3 -m pip install --no-cache-dir -r /app/requirements-markllm.txt
 
 # Unprivileged runtime user. The harness only reads input files and writes to

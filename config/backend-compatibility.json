@@ -1,0 +1,35 @@
+{
+  "markllm": {
+    "upstream": "THU-BPM/MarkLLM",
+    "ref": "c45ddc40f7b761beabe55a1b8dc4690e531d1c6d",
+    "env": "MARKLLM_DIR",
+    "default_dir": "MarkLLM",
+    "required_path": "watermark",
+    "status": "verification harness"
+  },
+  "reverse_synthid": {
+    "upstream": "aloshdenny/reverse-SynthID",
+    "ref": "b11083676fd3ee3ff97ce9d03c0e409e46905902",
+    "env": "REVERSE_SYNTHID_DIR",
+    "default_dir": "reverse-SynthID",
+    "required_path": "artifacts/spectral_codebook_v4.npz",
+    "status": "optional scorer"
+  },
+  "ctrlregen": {
+    "upstream": "mertizci/noai-watermark",
+    "ref": "b642ae45d20eded52c96d570985eb4e3e427aac8",
+    "env": "NOAI_WATERMARK_DIR",
+    "default_dir": "noai-watermark",
+    "required_path": "src/ctrlregen/engine.py",
+    "status": "experimental image removal"
+  },
+  "markdiffusion": {
+    "upstream": "THU-BPM/MarkDiffusion",
+    "ref": "cefdb320890acec728e3495b48824607d30329d3",
+    "version": "1.0.2",
+    "env": "MARKDIFFUSION_DIR",
+    "default_dir": "markdiffusion",
+    "required_path": "markdiffusion",
+    "status": "experimental image harness"
+  }
+}

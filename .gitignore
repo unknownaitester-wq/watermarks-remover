@@ -38,6 +38,7 @@
 !/requirements-dev.txt
 !/ruff.toml
 !/SECURITY.md
+!/watermark-clean
 !/stealer/
 !/stealer/**
 

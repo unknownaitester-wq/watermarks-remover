@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""One-command deterministic file cleaning and read-only watermark inspection."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import xml.etree.ElementTree as ET
+import zipfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+SCRIPTS = ROOT / "service" / "scripts"
+DOCX_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+SCHEMES = ("kgw", "exp", "synthid-text")
+
+
+def run_json(script: str, path: Path, *args: str) -> dict:
+    proc = subprocess.run(
+        [sys.executable, str(SCRIPTS / script), str(path), *args, "--json"],
+        capture_output=True, text=True, check=False,
+    )
+    if proc.returncode not in (0, 1) or not proc.stdout.strip():
+        raise RuntimeError(f"{script}: {proc.stderr.strip() or proc.stdout.strip() or 'no result'}")
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"{script}: invalid JSON output") from exc
+
+
+def extract_docx_text(path: Path) -> str:
+    """Flatten visible Word body/header/footer text for the existing text detectors."""
+    pieces: list[str] = []
+    with zipfile.ZipFile(path) as archive:
+        names = [n for n in archive.namelist() if n == "word/document.xml" or
+                 (n.startswith("word/") and n.endswith(".xml") and
+                  Path(n).name.startswith(("header", "footer", "footnotes", "endnotes")))]
+        if "word/document.xml" not in names:
+            raise ValueError("DOCX has no word/document.xml")
+        for name in names:
+            info = archive.getinfo(name)
+            if info.file_size > 32 * 1024 * 1024:
+                raise ValueError(f"DOCX text part too large: {name}")
+            root = ET.fromstring(archive.read(name))
+            for paragraph in root.iter(DOCX_NS + "p"):
+                line = "".join(node.text or "" for node in paragraph.iter()
+                               if node.tag == DOCX_NS + "t")
+                if line:
+                    pieces.append(line)
+    return "\n".join(pieces)
+
+
+def next_paths(source: Path) -> tuple[Path, Path]:
+    for number in range(1, 10000):
+        label = ".cleaned" if number == 1 else f".cleaned-{number}"
+        output = source.with_name(f"{source.stem}{label}{source.suffix}")
+        report = output.with_name(output.name + ".report.json")
+        if not output.exists() and not report.exists():
+            return output, report
+    raise RuntimeError("no free cleaned filename")
+
+
+def detect(text_file: Path, mode: str) -> list[dict]:
+    if mode == "none":
+        return [{"scheme": s, "status": "skipped", "reason": "disabled by --detectors none"}
+                for s in SCHEMES]
+    if mode == "auto":
+        mode = "local" if os.environ.get("MARKLLM_DIR") else "docker"
+    results = []
+    for scheme in SCHEMES:
+        if mode == "local":
+            cmd = [sys.executable, str(SCRIPTS / "detect_text_watermark.py"),
+                   "detect", str(text_file), "--scheme", scheme, "--offline", "--json"]
+        else:
+            cmd = ["docker", "compose", "--profile", "harness", "run", "--rm", "--no-deps", "--pull", "never",
+                   "-e", "HF_HOME=/data/hf-cache", "-e", "HUGGINGFACE_HUB_CACHE=/data/hf-cache/hub",
+                   "-v", f"{text_file.parent}:/watermark-input:ro", "wr-markllm", "detect",
+                   f"/watermark-input/{text_file.name}", "--scheme", scheme, "--offline", "--json"]
+        try:
+            proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True,
+                                  check=False, timeout=900)
+            if proc.returncode == 0:
+                payload = json.loads(proc.stdout)
+                results.append({"scheme": scheme, "status": "positive" if payload["is_watermarked"]
+                                else "negative", "score": payload.get("score"),
+                                "threshold": payload.get("threshold"), "model": payload.get("model")})
+            else:
+                results.append({"scheme": scheme, "status": "unavailable" if proc.returncode == 3
+                                else "error", "reason": (proc.stderr or proc.stdout).strip()[-500:]})
+        except (OSError, subprocess.TimeoutExpired, ValueError, KeyError) as exc:
+            results.append({"scheme": scheme, "status": "error", "reason": str(exc)})
+    return results
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("file", type=Path, help="File to clean; original is preserved")
+    parser.add_argument("--detectors", choices=("auto", "docker", "local", "none"), default="auto",
+                        help="MarkLLM execution (default: local if MARKLLM_DIR is set, else Docker)")
+    args = parser.parse_args()
+    source = args.file.expanduser().resolve()
+    if not source.is_file():
+        parser.error(f"not a file: {source}")
+    output, report_path = next_paths(source)
+    try:
+        before = run_json("inspect_file.py", source)
+        if before.get("kind") == "unknown":
+            raise RuntimeError("unrecognized file format; no output written")
+        cleaned = run_json("clean_file.py", source, "-o", str(output))
+        if not output.is_file():
+            raise RuntimeError("cleaner did not produce an output file")
+        after = run_json("inspect_file.py", output)
+        report = {"input": str(source), "output": str(output), "kind": after["kind"],
+                  "changed": cleaned.get("changed", source.read_bytes() != output.read_bytes()),
+                  "before": {"c2pa": before.get("has_c2pa"),
+                             "ai_metadata": before.get("has_ai_metadata"),
+                             "layer_a": before.get("suspicious_total", 0)},
+                  "after": {"c2pa": after.get("has_c2pa"),
+                            "ai_metadata": after.get("has_ai_metadata"),
+                            "layer_a": after.get("suspicious_total", 0)},
+                  "detectors": []}
+        if after.get("has_c2pa") or after.get("has_ai_metadata") or after.get("suspicious_total", 0):
+            report["verification"] = "residual findings; inspect output before use"
+        else:
+            report["verification"] = "no deterministic findings in supported inspection"
+        with tempfile.TemporaryDirectory(prefix="watermark-clean-", dir=ROOT) as temp:
+            text_file = Path(temp) / "cleaned-text.txt"
+            if output.suffix.lower() == ".docx":
+                text_file.write_text(extract_docx_text(output), encoding="utf-8")
+            elif after["kind"] == "text":
+                text_file.write_bytes(output.read_bytes())
+            if text_file.exists():
+                layer_a = run_json("inspect_text.py", text_file)
+                report["after"]["extracted_text_layer_a"] = layer_a["suspicious_total"]
+                if layer_a["suspicious_total"]:
+                    report["verification"] = "residual Layer A text findings; inspect output before use"
+                report["detectors"] = detect(text_file, args.detectors)
+            else:
+                report["detectors"] = [{"scheme": s, "status": "not_applicable"} for s in SCHEMES]
+        report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except (RuntimeError, OSError, ValueError, KeyError, zipfile.BadZipFile, ET.ParseError) as exc:
+        print(f"watermark-clean: {exc}", file=sys.stderr)
+        if output.exists() and not report_path.exists():
+            print(f"Partial output (review before use): {output}", file=sys.stderr)
+        return 1
+    print(f"Cleaned: {output}")
+    print(f"Verification: {report['verification']}")
+    for result in report["detectors"]:
+        detail = f" (score {result['score']}, threshold {result['threshold']})" if "score" in result else ""
+        reason = f" ({result['reason']})" if result.get("reason") else ""
+        print(f"  {result['scheme']}: {result['status']}{detail}{reason}")
+    print(f"Report: {report_path}")
+    return 0 if report["verification"].startswith("no deterministic") else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

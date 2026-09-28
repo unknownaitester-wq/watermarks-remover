@@ -68,14 +68,7 @@ if (-not (Test-Path (Join-Path $Dir '.git'))) {
     $head = ''
     try { $head = "$(git -C $Dir rev-parse HEAD)".Trim() } catch { $head = '' }
     if ($head -ne $Ref) {
-        Write-Host "checkout existente no esta en el ref fijado $Ref (HEAD: $head); re-fijando"
-        Invoke-Checked 'git fetch' { git -C $Dir fetch --depth 1 origin $Ref }
-        Invoke-Checked 'git checkout' { git -C $Dir checkout --detach $Ref }
-        Invoke-Checked 'sparse-checkout' {
-            git -C $Dir sparse-checkout set --no-cone '/src/' '/artifacts/spectral_codebook_v4.npz' '/requirements.txt' '/LICENSE' '/README.md'
-        }
-        $head = (git -C $Dir rev-parse HEAD).Trim()
-        if ($head -ne $Ref) { throw "error: se esperaba el ref fijado $Ref, se obtuvo $head" }
+        throw "El checkout reverse-SynthID esta en $head; se esperaba $Ref. Usa otro checkout; setup no cambiara este."
     }
 }
 

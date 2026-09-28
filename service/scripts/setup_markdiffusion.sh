@@ -90,6 +90,12 @@ if [[ "$CHECKOUT" -eq 1 ]]; then
     fi
   else
     echo "Using existing checkout: $DIR"
+    HEAD_SHA="$(git -C "$DIR" rev-parse HEAD 2>/dev/null || true)"
+    if [[ "$HEAD_SHA" != "$REF" ]]; then
+      echo "error: existing MarkDiffusion checkout is at ${HEAD_SHA:-unknown}, expected $REF" >&2
+      echo "Use a separate checkout at the pinned commit; this setup script will not change your existing checkout." >&2
+      exit 1
+    fi
   fi
 fi
 
